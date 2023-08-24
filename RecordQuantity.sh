@@ -12,8 +12,10 @@ function printTotalQuantity() {
 
     # Loop through the records and calculate total quantity
     while IFS= read -r line; do
+        name=$(echo "$line" | awk '{print $1}')
         quantity=$(echo "$line" | awk '{print $2}')
         total_quantity=$((total_quantity + quantity))
+        echo "$name, $quantity"  # Print the record name and quantity separated by a comma
     done < "records.txt"
 
     if [ "$total_quantity" -gt 0 ]; then
