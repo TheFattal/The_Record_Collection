@@ -101,7 +101,7 @@ Print_Total_Amount()
      fi   
 }
 
-
+#Back stage function for searching the DB:
 Search_by_name()
 { 
         for ((i=0; i<${#lines[@]}; i++)); do
@@ -117,6 +117,7 @@ Search_by_name()
    	fi
 }
 
+#Back stage function for searching the DB and showing selections:
 Search_select()
 {
 	PS3="Select a line: "
@@ -167,7 +168,7 @@ Update_Amount()
 		# Replace the line with the new number using sed
 		sed -i "s/^$escaped_line/${chosenLine%,*}, $quantity/" "$file"
 		echo "Replacement done in $file"
-		echo "$(date) UpdateName Success" >> "$log_file_name"
+		echo "$(date) UpdateAmount Success" >> "$log_file_name"
 	else
 		echo invalid option
 		echo "$(date) UpdateAmount Failure" >> "$log_file_name"
@@ -235,43 +236,44 @@ fi
 #This function removes a record to the file:
 Delete_Record() {
 local record_name
-read -p "Please enter the record name you would like to REMOVE: " record_name
-read -p "Please enter the record's new amount: " record_amount
-chosenLine=0
+read -p "Please enter the record's NAME you would like to REMOVE: " record_name
+read -p "Please enter the record's AMOUNT you would like to REMOVE: " record_amount
+
 Search_by_name $record_name
 find_lines_length=${#lines[@]}
 if [[ find_lines_length -ge 1 ]]; then
-echo "lines number are $find_lines_length"
-
-lines+=("ADD THE SEARCH: $record_name, $record_amount")
-PS3="Select a line: "
-	select selected_line in "${lines[@]}"; do
-	  selected_number=$REPLY
-         if [ -n "$selected_line" ]; then
-             	echo "Selected line: $selected_line"
-               	chosenLine="$selected_line"
-               	break
-         else
-               	echo "Invalid selection. Please choose a valid line."
-               	chosenLine=""
-        fi
-       	done
-       	echo "lines length: $find_lines_length , selected num: $selected_number , Reply: $REPLY"
-       	desired_value=$(( $find_lines_length + 1 ))
-       	
-             		
+    Search_select  
+    if [ $? -eq 1 ]; then
+       		#echo the line is $chosenLine
+       		temp=$(echo "$chosenLine" | awk '{print $NF}')
+       		quantity=$(($temp))
+       		new_amount=$(($quantity - $record_amount))
+       		
+       		if [[ $new_amount -gt 0 ]]; then
+       		        escaped_line=$(sed 's/[\/&]/\\&/g' <<< "$chosenLine")
+		        # Replace the line with the new number using sed
+	        	sed -i "s/^$escaped_line/${chosenLine%,*}, $new_amount/" "$file"
+	        	echo "Quantity has been reduced successfuly $file"
+	        	echo "$(date) UpdateAmount Success" >> "$log_file_name"	
+	        elif [[ $new_amount -eq 0 ]]; then
+	             sed -i "/^$chosenLine$/d" "$file"
+	             echo "The Record was successfully deleted from DB!"
+	             echo "$(date) Delete Success" >> "$log_file_name"
+	        else
+	             echo "There are LESS records then the amount you are trying to delete!"
+	             echo "$(date) Delete Failure" >> "$log_file_name"
+	        	
+       		fi
+       		
+       		
  		
- 	escaped_line=$(sed 's/[\/&]/\\&/g' <<< "$chosenLine")
-	# Replace the line with the new number using sed
-	sed -i "s/^$escaped_line/${chosenLine%,*}, $record_amount/" "$file"
-	echo "Amount replacement was done in $file"	
-else 
-  	       echo "$record_name, $record_amount" >> $file
-	       echo "A new record was made successfuly in the Data-base!"	       
+    else
+		echo "We couldn't find the record sorry..."
+		echo "$(date) Delete Failure" >> "$log_file_name"
+		return 0
+    fi  
 
 fi
-
-
 }
 
 Menu() {
