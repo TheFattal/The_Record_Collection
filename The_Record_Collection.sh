@@ -1,43 +1,53 @@
 #!/bin/bash
+
+#Global variables:
 lines=()
 
+#This function creates the DB and LOG files with the name provided by the external argument, if it's NOT exists. Also validates the argument input:
+Create_Files() {
 
-#This function creates the file with the name provided by the external argument, if it's NOT exists. Also validates the input:
-Create_File() {
-
-#validation-1: checks if there are more than 1 argument:
+#validation-1 --- checks if there are more than 1 argument:
 if [[ -n "$2" ]]; then
     echo "Please provide ONE argument only!"
    exit 1
 fi
 
 local file_name="$1"
-#Validation-2: Checks if an argument is provided:
+#Validation-2 --- Checks if an argument is provided:
 if [[ -z $file_name ]]; then
     echo "Please provide file name as an argument!"
    exit 2
 fi
 
-#Validation-3: Checks if the file already exists:
+#Validation-3 --- Checks if the file already exists - and creates log file if necessary:
 if [[ -e $file_name ]] ; then
     echo "File '$file_name' already exists - let's use it! "
+    declare -g log_file_name="${file_name}_log"
+    if [ -e "$log_file_name" ]; then
+       echo "And it's log file '$log_file_name' exists too."
+    else
+       touch "$log_file_name"
+       echo "A log file '$log_file_name' was successfull created"
+    fi
     return 1
 fi
 
-#Validation-4: Checks if the file name characters are valid:
+#Validation-4 --- Checks if the file name characters are valid:
   local valid='^[a-zA-Z0-9_\-\.]+$'
 if ! [[ $file_name =~ $valid ]]; then
     echo "Invalid characters in the file name."
     exit 4
 fi
 
-# Create the file and massage a success message:
+# Create the file and the log file, and massage a success message:
 touch "$file_name"
-echo "File '$file_name' was successfully created."
+declare -g log_file_name="${file_name}_log"
 
+touch "$log_file_name"
+echo "DB File '$file_name' and log file '$file_name_log' were successfully created."
 }
 
-#This function searches the Data-Base by name:
+#This function searches the Data-Base by record name:
 Search_Record()
 {
 	read -p "what are you looking for?" recordName
@@ -68,9 +78,31 @@ Print_Sorted()   {
    
 }
 
+#The function calculates the TOTAL amount of records in the Data-Base:
+Print_Total_Amount() 
+{
+    # Check if the records file exists
+    if [ ! -f "$file" ]; then
+        echo "No records file found."
+        echo "Task completed."
+        echo "$(date) PrintAmount Failure" >> log.txt
+        return 0
+    fi
+    
+    #Calculets total amount - and print the outcome:
+    total_quantity=$(awk '{n += $NF}; END{print n}' $file)
+    if [[ total_quantity -gt 0 ]]; then
+        echo "The records TOTAL AMOUNT is: $total_quantity"
+        echo "$(date) PrintAmount Success" >> log.txt
+    else
+        echo "The are NO records in the Data-Base!"
+     fi   
+}
+
 
 Search_by_name()
-{
+{ 
+        lines=0
 	recordName="$1"
 	while IFS= read -r line; do
     		lines+=("$line")
@@ -99,7 +131,7 @@ Search_select()
 }
 
 
-
+#This function RENAMES a sfecific record name:
 Update_Name()
 {
 	read -p "Hi which record would you like to rename? " recordName
@@ -116,6 +148,7 @@ Update_Name()
 	fi
 }
 
+#This function CHANGES QUANTITY of a sfecific record:
 Update_Amount()
 {
         read -p "Please enter record name: " recordName
@@ -126,7 +159,7 @@ Update_Amount()
  		read -p "Please enter new record's amount: " quantity
  		escaped_line=$(sed 's/[\/&]/\\&/g' <<< "$chosenLine")
 		# Replace the line with the new number using sed
-		sed -i "s/^$escaped_line/${chosenLine%,*},$quantity/" "$file"
+		sed -i "s/^$escaped_line/${chosenLine%,*}, $quantity/" "$file"
 		echo "Replacement done in $file"
 	else
 		echo invalid option
@@ -139,10 +172,90 @@ Update_Amount()
 #This function adds a record to the file:
 Add_Record() {
 local record_name
-read -p "Please enter record name: " record_name
+read -p "Please enter a new record name you would like to add: " record_name
+read -p "Please enter the record's amount: " record_amount
+#Search for resaults and show the selections in a menu:
+chosenLine=0
+Search_by_name $record_name
+find_lines_length=${#lines[@]}
+if [[ find_lines_length -ge 1 ]]; then
+echo "lines number are $find_lines_length"
 
-read -p "Please enter record's amount: " record_amount
-#we need to search if it exists!!!
+lines+=("ADD THE SEARCH: $record_name, $record_amount")
+PS3="Select a line: "
+	select selected_line in "${lines[@]}"; do
+	  selected_number=$REPLY
+         if [ -n "$selected_line" ]; then
+             	echo "Selected line: $selected_line"
+               	chosenLine="$selected_line"
+               	break
+         else
+               	echo "Invalid selection. Please choose a valid line."
+               	chosenLine=""
+        fi
+       	done
+       	# The case of Adding the current search to the DB, instead od updating quantity:
+       	desired_value=$(( $find_lines_length + 1 ))
+       	if [ $REPLY -eq $desired_value ]; then
+       	  echo "$record_name, $record_amount" >> $file
+	  echo "A new record was made successfuly in the Data-base!"
+	  return 0
+       	fi
+             		
+ 	#Updating the record amount after choosing selection: 	
+ 	escaped_line=$(sed 's/[\/&]/\\&/g' <<< "$chosenLine")
+	# Replace the line with the new number using sed
+	sed -i "s/^$escaped_line/${chosenLine%,*}, $record_amount/" "$file"
+	echo "Amount replacement was done in $file"
+	
+#If there were NO search resault at all, add the new record to the DB:		
+else 
+  	       echo "$record_name, $record_amount" >> $file
+	       echo "A new record was made successfuly in the Data-base!"	       
+
+fi
+
+
+}
+
+#This function removes a record to the file:
+Delete_Record() {
+local record_name
+read -p "Please enter the record name you would like to REMOVE: " record_name
+read -p "Please enter the record's new amount: " record_amount
+chosenLine=0
+Search_by_name $record_name
+find_lines_length=${#lines[@]}
+if [[ find_lines_length -ge 1 ]]; then
+echo "lines number are $find_lines_length"
+
+lines+=("ADD THE SEARCH: $record_name, $record_amount")
+PS3="Select a line: "
+	select selected_line in "${lines[@]}"; do
+	  selected_number=$REPLY
+         if [ -n "$selected_line" ]; then
+             	echo "Selected line: $selected_line"
+               	chosenLine="$selected_line"
+               	break
+         else
+               	echo "Invalid selection. Please choose a valid line."
+               	chosenLine=""
+        fi
+       	done
+       	echo "lines length: $find_lines_length , selected num: $selected_number , Reply: $REPLY"
+       	desired_value=$(( $find_lines_length + 1 ))
+       	
+             		
+ 		
+ 	escaped_line=$(sed 's/[\/&]/\\&/g' <<< "$chosenLine")
+	# Replace the line with the new number using sed
+	sed -i "s/^$escaped_line/${chosenLine%,*}, $record_amount/" "$file"
+	echo "Amount replacement was done in $file"	
+else 
+  	       echo "$record_name, $record_amount" >> $file
+	       echo "A new record was made successfuly in the Data-base!"	       
+
+fi
 
 
 }
@@ -154,26 +267,25 @@ while true; do
 
     select menu_answer in "${options[@]}"; do
         case $menu_answer in
-            "Add Record")
-               Add_Record
-               Menu
+               "Add Record")
+                Add_Record     
                 ;;
-            "Delete Record")
-            Delete_Record
+               "Delete Record")
+                Delete_Record
                 ;;
-            "Search Record")
+               "Search Record")
                 Search_Record
                 ;;
-            "Update Name")
+               "Update Name")
                 Update_Name
                 ;;
-            "Update Amount")
+               "Update Amount")
                 Update_Amount
                 ;;
-            "Print Total Amount")
+               "Print Total Amount")
                 Print_Total_Amount
-                 ;;
-                 "Print Sorted")
+                ;;
+                "Print Sorted")
                 Print_Sorted
                 ;;
                  "Exit")
@@ -190,8 +302,9 @@ while true; do
 done
 }
 
-#Input an Argument
+#Input Arguments:
 file="$1"
 file2="$2"
-Create_File "$file" "$file2"
+#Call Create_File function, and then running the menu:
+Create_Files "$file" "$file2"
 Menu
